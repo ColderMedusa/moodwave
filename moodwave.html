@@ -1,0 +1,1385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Moodwave — mood radio</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg: #17130f;
+    --panel: #211a15;
+    --panel-raised: #2a221b;
+    --dial-face: #ede3d0;
+    --dial-face-dim: #d8cbb2;
+    --text: #f3ead9;
+    --text-muted: #9c8d78;
+    --amber: #ff9142;
+    --amber-dim: #7a5230;
+    --needle: #e85c41;
+    --line: #3a3027;
+    --mint: #6fcf97;
+    --mint-dim: #2e4a3a;
+    --rose: #e85c41;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Space Grotesk', sans-serif;
+    min-height: 100%;
+  }
+  body {
+    display: flex;
+    justify-content: center;
+    padding: 40px 16px;
+  }
+  .radio {
+    width: 100%;
+    max-width: 460px;
+    background: var(--panel);
+    border-radius: 18px;
+    padding: 22px 22px 26px;
+    border: 1px solid var(--line);
+    box-shadow: 0 40px 80px -30px rgba(0,0,0,0.7);
+  }
+  .brand {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    padding: 4px 6px 18px;
+  }
+  .brand h1 {
+    font-family: 'Fraunces', serif;
+    font-size: 26px;
+    font-weight: 600;
+    letter-spacing: 0.2px;
+    margin: 0;
+    color: var(--text);
+  }
+  .brand span {
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+
+  /* LCD readout */
+  .readout {
+    background: var(--dial-face);
+    border-radius: 10px;
+    padding: 16px 18px;
+    color: #241a10;
+    position: relative;
+    overflow: hidden;
+    border: 1px solid #00000022;
+  }
+  .readout::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(180deg, rgba(0,0,0,0.035) 0px, rgba(0,0,0,0.035) 1px, transparent 1px, transparent 3px);
+    pointer-events: none;
+  }
+  .readout.loading::before { opacity: 0.4; }
+  .readout-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    position: relative;
+    z-index: 1;
+  }
+  .readout-label {
+    font-size: 10.5px;
+    color: #8a7455;
+    letter-spacing: 0.06em;
+  }
+  .station-name {
+    font-family: 'Fraunces', serif;
+    font-weight: 600;
+    font-size: 22px;
+    margin: 3px 0 2px;
+    line-height: 1.15;
+    min-height: 27px;
+    transition: opacity 150ms ease;
+  }
+  .readout.loading .station-name { opacity: 0.55; }
+  .station-desc {
+    font-size: 12.5px;
+    color: #5a4a34;
+    min-height: 16px;
+  }
+  .vu {
+    display: flex;
+    align-items: flex-end;
+    gap: 3px;
+    height: 26px;
+    position: relative;
+    z-index: 1;
+  }
+  .vu i {
+    display: block;
+    width: 4px;
+    background: #b0492f;
+    border-radius: 1px;
+    height: 20%;
+    opacity: 0.35;
+  }
+  .radio.playing .vu i {
+    animation: bounce 900ms ease-in-out infinite;
+    opacity: 1;
+  }
+  .vu i:nth-child(1){ animation-delay: 0ms; }
+  .vu i:nth-child(2){ animation-delay: 120ms; }
+  .vu i:nth-child(3){ animation-delay: 240ms; }
+  .vu i:nth-child(4){ animation-delay: 60ms; }
+  .vu i:nth-child(5){ animation-delay: 300ms; }
+  @keyframes bounce {
+    0%, 100% { height: 20%; }
+    50% { height: 90%; }
+  }
+
+  /* Spinner — distinct from buffering */
+  .spinner {
+    display: none;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 2;
+  }
+  .readout.loading .spinner { display: block; }
+  .spinner-dot {
+    width: 30px;
+    height: 30px;
+    border: 2.5px solid #8a7455;
+    border-top-color: #241a10;
+    border-radius: 50%;
+    animation: spin 700ms linear infinite;
+  }
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
+  /* Band selector */
+  .bands {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    margin: 20px 0 14px;
+  }
+  .band-btn {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 12.5px;
+    font-weight: 500;
+    color: var(--text-muted);
+    background: var(--panel-raised);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 8px 4px;
+    cursor: pointer;
+    transition: color 150ms ease, border-color 150ms ease, background 150ms ease;
+  }
+  .band-btn:hover { color: var(--text); }
+  .band-btn.active {
+    color: var(--bg);
+    background: var(--amber);
+    border-color: var(--amber);
+    font-weight: 600;
+  }
+
+  .mood-tagline {
+    font-size: 12px;
+    color: var(--text-muted);
+    padding: 0 4px 14px;
+    min-height: 16px;
+  }
+
+  /* Favorites row */
+  .favorites-section {
+    margin-bottom: 10px;
+  }
+  .section-label {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 10.5px;
+    color: var(--text-muted);
+    letter-spacing: 0.06em;
+    margin-bottom: 8px;
+  }
+  .section-label .hint {
+    font-size: 10px;
+    color: var(--text-muted);
+    font-weight: 400;
+    letter-spacing: 0;
+  }
+  .favorites-strip {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--amber-dim) transparent;
+  }
+  .favorites-strip::-webkit-scrollbar { height: 4px; }
+  .favorites-strip::-webkit-scrollbar-thumb {
+    background: var(--amber-dim);
+    border-radius: 4px;
+  }
+  .fav-chip {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--panel-raised);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 6px 12px 6px 10px;
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--text);
+    transition: border-color 150ms ease, background 150ms ease;
+    white-space: nowrap;
+  }
+  .fav-chip:hover { border-color: var(--amber-dim); }
+  .fav-chip.active {
+    border-color: var(--amber);
+    background: linear-gradient(180deg, rgba(255,145,66,0.14), rgba(255,145,66,0.04));
+  }
+  .fav-chip .fav-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--amber);
+    flex-shrink: 0;
+  }
+  .fav-chip .fav-del {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 13px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0 2px;
+    border-radius: 3px;
+    transition: color 150ms ease;
+  }
+  .fav-chip .fav-del:hover { color: var(--rose); }
+
+  /* Presets */
+  .presets {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+  }
+  .preset {
+    background: var(--panel-raised);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 12px 10px;
+    text-align: left;
+    cursor: pointer;
+    color: var(--text);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    transition: border-color 150ms ease, transform 100ms ease;
+  }
+  .preset:hover { border-color: var(--amber-dim); }
+  .preset.active {
+    border-color: var(--amber);
+    background: linear-gradient(180deg, rgba(255,145,66,0.14), rgba(255,145,66,0.04));
+  }
+  .preset-num {
+    font-size: 10.5px;
+    color: var(--text-muted);
+    letter-spacing: 0.05em;
+  }
+  .preset-name {
+    font-family: 'Fraunces', serif;
+    font-weight: 600;
+    font-size: 14px;
+    line-height: 1.2;
+  }
+  .preset-genre {
+    font-size: 10.5px;
+    color: var(--text-muted);
+  }
+
+  /* Custom station form */
+  .custom-station-bar {
+    display: flex;
+    gap: 8px;
+    margin-top: 14px;
+    padding: 0 2px;
+  }
+  .custom-station-bar input[type="text"] {
+    flex: 1;
+    background: var(--panel-raised);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 9px 11px;
+    color: var(--text);
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 12.5px;
+    outline: none;
+    transition: border-color 150ms ease;
+  }
+  .custom-station-bar input[type="text"]:focus {
+    border-color: var(--amber);
+  }
+  .custom-station-bar input[type="text"]::placeholder {
+    color: var(--text-muted);
+    opacity: 0.7;
+  }
+  .btn {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 12.5px;
+    font-weight: 500;
+    border: none;
+    border-radius: 8px;
+    padding: 9px 14px;
+    cursor: pointer;
+    transition: opacity 150ms ease, transform 100ms ease;
+    white-space: nowrap;
+  }
+  .btn:active { transform: scale(0.96); }
+  .btn-primary {
+    background: var(--amber);
+    color: var(--bg);
+  }
+  .btn-primary:hover { opacity: 0.9; }
+  .btn-ghost {
+    background: transparent;
+    color: var(--text-muted);
+    border: 1px solid var(--line);
+  }
+  .btn-ghost:hover { color: var(--text); border-color: var(--amber-dim); }
+  .btn-sm {
+    padding: 6px 10px;
+    font-size: 11.5px;
+  }
+  .toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%) translateY(12px);
+    background: var(--panel-raised);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 10px 16px;
+    font-size: 12.5px;
+    color: var(--text);
+    box-shadow: 0 12px 32px -12px rgba(0,0,0,0.7);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 180ms ease, transform 180ms ease;
+    z-index: 50;
+    max-width: 90vw;
+    white-space: nowrap;
+  }
+  .toast.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+  .toast.err { border-color: var(--rose); color: #f0b8a8; }
+
+  /* Transport */
+  .transport {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 22px;
+    padding: 0 4px;
+  }
+  .play-btn {
+    width: 46px;
+    height: 46px;
+    border-radius: 50%;
+    background: var(--amber);
+    border: none;
+    color: var(--bg);
+    font-size: 16px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: transform 100ms ease;
+  }
+  .play-btn:active { transform: scale(0.94); }
+  .surprise-btn {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    background: transparent;
+    border: 1px solid var(--line);
+    color: var(--text-muted);
+    font-size: 15px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: color 150ms ease, border-color 150ms ease, background 150ms ease;
+  }
+  .surprise-btn:hover {
+    color: var(--text);
+    border-color: var(--amber-dim);
+    background: var(--panel-raised);
+  }
+  .surprise-btn:active { transform: scale(0.92); }
+  .volume-wrap {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .volume-label {
+    font-size: 10.5px;
+    color: var(--text-muted);
+    letter-spacing: 0.05em;
+    white-space: nowrap;
+  }
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 3px;
+    background: var(--line);
+    border-radius: 2px;
+    outline: none;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: var(--dial-face);
+    border: 2px solid var(--amber);
+    cursor: pointer;
+  }
+  input[type="range"]::-moz-range-thumb {
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: var(--dial-face);
+    border: 2px solid var(--amber);
+    cursor: pointer;
+  }
+
+  .status-line {
+    font-size: 11px;
+    color: var(--text-muted);
+    text-align: center;
+    margin-top: 14px;
+  }
+
+  .recently-wrap {
+    margin-top: 16px;
+    padding-top: 12px;
+    border-top: 1px solid var(--line);
+  }
+
+  @media (max-width: 380px) {
+    .station-name { font-size: 19px; }
+    .presets { grid-template-columns: repeat(3, 1fr); gap: 7px; }
+    .preset-name { font-size: 12.5px; }
+    .custom-station-bar { flex-direction: column; }
+    .custom-station-bar .btn { width: 100%; }
+  }
+</style>
+</head>
+<body>
+
+<div class="radio" id="radio">
+  <div class="brand">
+    <h1>Moodwave</h1>
+    <span>internet radio</span>
+  </div>
+
+  <div class="readout" id="readout">
+    <div class="readout-top">
+      <div>
+        <div class="readout-label">NOW TUNED</div>
+        <div class="station-name" id="stationName">Pick a preset</div>
+        <div class="station-desc" id="stationDesc">Choose a mood below to get started</div>
+      </div>
+      <div class="vu"><i></i><i></i><i></i><i></i><i></i></div>
+    </div>
+    <div class="spinner"><div class="spinner-dot"></div></div>
+  </div>
+
+  <div class="bands" id="bands"></div>
+  <div class="mood-tagline" id="moodTagline"></div>
+
+  <div class="favorites-section" id="favoritesSection" style="display:none;">
+    <div class="section-label">
+      <span>★ FAVORITES</span>
+      <span class="hint">pinned across moods</span>
+    </div>
+    <div class="favorites-strip" id="favoritesStrip"></div>
+  </div>
+
+  <div class="presets" id="presets"></div>
+
+  <div class="custom-station-bar">
+    <input type="text" id="customUrl" placeholder="Add a station by URL… e.g. https://ice1.somafm.com/beatblender-256-mp3">
+    <button class="btn btn-primary btn-sm" id="addCustomBtn">+ Add</button>
+    <button class="btn btn-ghost btn-sm" id="addToMoodBtn" title="Also add to the current mood">⊕ to mood</button>
+    <button class="btn btn-ghost btn-sm" id="resetPrefsBtn" title="Reset favorites, recently played and last station">↺ Reset</button>
+  </div>
+
+  <div class="recently-wrap">
+    <div class="section-label">
+      <span>◀ RECENTLY PLAYED</span>
+      <span class="hint">last 5</span>
+    </div>
+    <div class="favorites-strip" id="recentStrip"></div>
+  </div>
+
+  <div class="transport">
+    <button class="play-btn" id="playBtn" aria-label="Play">▶</button>
+    <button class="surprise-btn" id="surpriseBtn" aria-label="Surprise me" title="Surprise me">✦</button>
+    <div class="volume-wrap">
+      <span class="volume-label">VOL</span>
+      <input type="range" id="volume" min="0" max="100" value="70">
+    </div>
+  </div>
+
+  <div class="status-line" id="statusLine"> Streams from SomaFM · free internet radio</div>
+</div>
+
+<audio id="player" preload="none"></audio>
+<audio id="crossfadePlayer" preload="auto"></audio>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ============================================================
+   DATA
+   ============================================================ */
+const moods = [
+  {
+    id: 'chill',
+    label: 'Chill',
+    tagline: 'Downtempo and lounge for slowing down',
+    stations: [
+      { name: 'Groove Salad', genre: 'Chillout / downtempo', url: 'https://ice1.somafm.com/groovesalad-256-mp3' },
+      { name: 'Fluid', genre: 'Liquid drum & bass, chilled', url: 'https://ice1.somafm.com/fluid-256-mp3' },
+      { name: 'Illinois St. Lounge', genre: 'Vintage lounge & exotica', url: 'https://ice1.somafm.com/illstreet-256-mp3' },
+    ]
+  },
+  {
+    id: 'focus',
+    label: 'Focus',
+    tagline: 'Ambient and spacey textures for deep work',
+    stations: [
+      { name: 'Drone Zone', genre: 'Atmospheric ambient', url: 'https://ice1.somafm.com/dronezone-256-mp3' },
+      { name: 'Deep Space One', genre: 'Deep ambient electronic', url: 'https://ice1.somafm.com/deepspaceone-256-mp3' },
+      { name: 'Space Station Soma', genre: 'Deep ambient space music', url: 'https://ice1.somafm.com/spacestation-256-mp3' },
+    ]
+  },
+  {
+    id: 'energy',
+    label: 'Energy',
+    tagline: 'Upbeat electronic to keep you moving',
+    stations: [
+      { name: 'Beat Blender', genre: 'House & downtempo blends', url: 'https://ice1.somafm.com/beatblender-256-mp3' },
+      { name: 'Digitalis', genre: 'Digitally-affected downtempo', url: 'https://ice1.somafm.com/digitalis-256-mp3' },
+      { name: 'PopTron', genre: 'Electro pop, synth', url: 'https://ice1.somafm.com/poptron-256-mp3' },
+    ]
+  },
+  {
+    id: 'retro',
+    label: 'Retro',
+    tagline: 'Nostalgic sounds from decades past',
+    stations: [
+      { name: 'Secret Agent', genre: 'Spy jazz & lounge', url: 'https://ice1.somafm.com/secretagent-256-mp3' },
+      { name: 'Underground 80s', genre: 'Early 80s underground', url: 'https://ice1.somafm.com/u80s-256-mp3' },
+      { name: 'Seven Inch Soul', genre: 'Vintage soul 45s', url: 'https://ice1.somafm.com/7soul-256-mp3' },
+    ]
+  },
+];
+
+/* ============================================================
+   State
+   ============================================================ */
+let activeMoodId = null;
+let activeStationUrl = null;
+let isPlaying = false;
+
+// Phase 2
+let lastStation = null;
+let retryTimer = null;
+let isConnecting = false;
+
+// Phase 3 — personalization; persisted via localStorage in Phase 5.
+let favorites = [];            // { url, name }[]
+const MAX_RECENT = 5;
+let recentlyPlayed = [];       // [{ moodId, url, name }] — most recent first
+
+// ---- persistence (localStorage) ----
+const PREFS_KEY = "moodwave_prefs_v1";
+const STORAGE_ENABLED = (() => {
+  try {
+    const test = "__moodwave_storage_ok__";
+    localStorage.setItem(test, "1");
+    localStorage.removeItem(test);
+    return true;
+  } catch (_) {
+    return false;
+  }
+})();
+
+function savePrefs() {
+  if (!STORAGE_ENABLED) return;
+  try {
+    localStorage.setItem(PREFS_KEY, JSON.stringify({
+      lastStation,
+      favorites,
+      recentlyPlayed,
+    }));
+  } catch (_) { /* storage full / private mode */ }
+}
+
+function loadPrefs() {
+  if (!STORAGE_ENABLED) return;
+  try {
+    const raw = localStorage.getItem(PREFS_KEY);
+    if (!raw) return;
+    const obj = JSON.parse(raw);
+    if (obj && typeof obj === "object") {
+      if (obj.lastStation && typeof obj.lastStation === "object") lastStation = obj.lastStation;
+      if (Array.isArray(obj.favorites)) favorites = obj.favorites;
+      if (Array.isArray(obj.recentlyPlayed)) recentlyPlayed = obj.recentlyPlayed;
+    }
+  } catch (_) { /* corrupt / private mode */ }
+}
+
+function clearPrefs() {
+  if (!STORAGE_ENABLED) return;
+  try { localStorage.removeItem(PREFS_KEY); } catch (_) {}
+  lastStation = null;
+  favorites = [];
+  recentlyPlayed = [];
+  renderFavorites();
+  renderRecent();
+}
+
+/* ============================================================ */
+const radioEl = document.getElementById('radio');
+const readoutEl = document.getElementById('readout');
+let player = document.getElementById('player');
+const bandsEl = document.getElementById('bands');
+const presetsEl = document.getElementById('presets');
+const moodTaglineEl = document.getElementById('moodTagline');
+const stationNameEl = document.getElementById('stationName');
+const stationDescEl = document.getElementById('stationDesc');
+const playBtn = document.getElementById('playBtn');
+const surpriseBtn = document.getElementById('surpriseBtn');
+const volumeEl = document.getElementById('volume');
+const statusLine = document.getElementById('statusLine');
+const favSection = document.getElementById('favoritesSection');
+const favStrip = document.getElementById('favoritesStrip');
+const recentStrip = document.getElementById('recentStrip');
+const customUrlInput = document.getElementById('customUrl');
+const addCustomBtn = document.getElementById('addCustomBtn');
+const addToMoodBtn = document.getElementById('addToMoodBtn');
+const toastEl = document.getElementById('toast');
+
+let toastTimer = null;
+function toast(msg, isError = false) {
+  toastEl.textContent = msg;
+  toastEl.classList.toggle('err', isError);
+  toastEl.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toastEl.classList.remove('show'), 2200);
+}
+
+/* ============================================================
+   Phase 4 — smarter mood matching
+   ============================================================ */
+
+// Time-of-day default mood: Focus during working hours, Chill in the evening/night,
+// otherwise the first mood (used as a stable fallback for early morning).
+const TOD_MOOD = {
+  focus:   { start: 9,  end: 17 },   // 09:00–16:59
+  chill:   { start: 17, end: 29 },   // 17:00–28:59 (wraps past midnight → chill until 05:00)
+};
+function defaultMoodForTime() {
+  const h = new Date().getHours(); // 0–23
+  // Chill wraps: 17:00–23:59 AND 00:00–05:59
+  if (h >= 17 || h < 6) return 'chill';
+  if (h >= 9 && h < 17) return 'focus';
+  // 06:00–08:59 and 17:00+ already handled; fallback
+  return 'chill';
+}
+
+// Dual-audio crossfade.
+//
+// Two <audio> elements live in the DOM at all times:
+//   #player            – the currently-audible one (the id tracks whichever
+//                        element the listener should hear)
+//   #crossfadePlayer   – the silent element that gets the next stream loaded
+//                        onto it for the ramp-in.
+//
+// Lifecycle of one transition:
+//   1. Load nextUrl onto #crossfadePlayer, set its volume to 0, keep #player
+//      at masterVolume and playing.
+//   2. After a short startup delay, ramp both volumes with rAF:
+//        #player     : masterVolume → 0
+//        #crossfadePlayer : 0 → masterVolume   (ease-in-out, ~760ms)
+//   3. At the end of the ramp, swap the ids so #player names the new element,
+//      tear down the old element, re-pin listeners onto the new primary, and
+//      resolve the caller's promise.
+//
+// Abort (a newer startCrossfade call, or retryStream): set cf.finished, cancel
+// the timer, teardown incoming, restore current to full, resolve the in-flight
+// promise, and null cf — all under a single "is this still my cf?" check so a
+// mid-flight abort can't leave a hanging settle() on a dead object.
+
+let cf = null; // the in-flight crossfade state, or null
+
+const MASTER_TARGET = 0.7;
+let masterVolume = MASTER_TARGET;
+
+function setPlayerVolume(el, v) {
+  el.volume = Math.min(1, Math.max(0, v));
+}
+
+// When not mid-crossfade, mirror the audible element's volume back to the
+// slider so the slider stays honest (e.g. after a crossfade completes).
+function syncSliderFromPrimary() {
+  if (!cf) {
+    volumeEl.value = String(Math.round(getAudio().volume * 100));
+  }
+}
+
+function stopAndTeardown(el) {
+  try { if (el.paused === false) el.pause(); } catch (_) { /* already stopped */ }
+  el.pause();
+  el.src = '';
+  el.load();
+}
+
+// Start a crossfade from the current audible element toward nextUrl.
+// Returns a promise that resolves when the new stream is primary, or rejects
+// if the incoming stream failed to play.
+function startCrossfade(nextUrl, nextName) {
+  return new Promise((resolve, reject) => {
+    // If a crossfade is already in flight, abort it cleanly first, then
+    // proceed with a fresh transition.
+    if (cf) {
+      abortCrossfadeKeepResolved();
+    }
+
+    const incoming = document.getElementById('crossfadePlayer');
+    const current = getAudio();
+    const startupDelayMs = 130;
+    const rampMs = 760;
+    const rampStart = performance.now();
+
+    // One mutable cell per in-flight crossfade. Every callback below checks
+    // `cf === thisCf` before acting, so a newer call that nulls cf leaves
+    // these callbacks as harmless no-ops.
+    const thisCf = {
+      resolve,
+      reject,
+      incoming,
+      current,
+      timer: null,        // setTimeout/rAF handle, cleared on completion/abort
+      finished: false,    // true once tearDown or abort has run
+      onIncomingError: null, // set after addEventListener below
+    };
+    cf = thisCf;
+
+    // Prepare the incoming element.
+    stopAndTeardown(incoming);
+    incoming.src = nextUrl;
+    incoming.preload = 'auto';
+    setPlayerVolume(current, masterVolume);
+    setPlayerVolume(incoming, 0);
+
+    // ---- callbacks (all close over `thisCf`) ----
+
+    function finish(reason) {
+      // reason: 'ok' | 'err'
+      if (cf !== thisCf) return;     // newer crossfade superseded us
+      if (thisCf.finished) return;    // already settled
+      thisCf.finished = true;
+      thisCf.timer = null;
+      incoming.removeEventListener('error', thisCf.onIncomingError);
+      if (reason === 'err') {
+        stopAndTeardown(incoming);
+        setPlayerVolume(current, masterVolume);
+        toast(`✦ ${nextName} — skipping (stream unavailable)`, true);
+        reject(new Error('incoming stream failed'));
+      } else {
+        // Swap ids: #player now names the incoming (new audible) element.
+        current.replaceWith(incoming);
+        current.id = 'crossfadePlayer';
+        incoming.id = 'player';
+        setPlayerVolume(incoming, masterVolume);
+        incoming.preload = 'none';
+        player = incoming;
+        unpinListenersOn(current);
+        pinListenersOn(incoming);
+        resolve();
+      }
+      cf = null;
+    }
+
+    function onIncomingError() {
+      if (cf !== thisCf) return;
+      finish('err');
+    }
+    thisCf.onIncomingError = onIncomingError;
+    incoming.addEventListener('error', onIncomingError);
+
+    const incomingPlay = incoming.play();
+    incomingPlay.catch(() => {
+      if (cf !== thisCf) return;
+      finish('err');
+    });
+
+    // ---- ramp scheduling ----
+    function tick(now) {
+      if (cf !== thisCf) return;
+      if (thisCf.finished) return;
+      const t = (now - rampStart) / rampMs;
+      const u = Math.min(1, Math.max(0, t));
+      // ease-in-out
+      const ease = u < 0.5 ? 2 * u * u : 1 - Math.pow(-2 * u + 2, 2) / 2;
+      setPlayerVolume(current, masterVolume * (1 - ease));
+      setPlayerVolume(incoming, masterVolume * ease);
+      if (u < 1) {
+        thisCf.timer = requestAnimationFrame(tick);
+      } else {
+        setPlayerVolume(incoming, masterVolume);
+        finish('ok');
+      }
+    }
+
+    thisCf.timer = setTimeout(() => {
+      if (cf !== thisCf) return;
+      thisCf.timer = requestAnimationFrame(tick);
+    }, startupDelayMs);
+  });
+}
+
+// Abort an in-flight crossfade and resolve its promise (so the caller, e.g.
+// selectStation or retryStream, continues as if the crossfade completed).
+// Must only be called while cf is the crossfade being aborted (callers guard
+// with `if (cf)` then call this).
+function abortCrossfadeKeepResolved() {
+  if (!cf) return;
+  const old = cf;
+  old.finished = true;
+  if (old.timer) {
+    if (typeof old.timer === 'number') clearTimeout(old.timer);
+    else cancelAnimationFrame(old.timer);
+  }
+  old.timer = null;
+  stopAndTeardown(old.incoming);
+  if (old.onIncomingError) old.incoming.removeEventListener('error', old.onIncomingError);
+  setPlayerVolume(old.current, masterVolume);
+  old.resolve();
+  cf = null;
+}
+
+
+// Surprise me: pick a random station within the current mood (or a random mood if none selected).
+function surpriseMe() {
+  let pool;
+  if (activeMoodId) {
+    const mood = moods.find(m => m.id === activeMoodId);
+    if (mood && mood.stations.length) { pool = mood.stations; }
+  }
+  if (!pool) {
+    // pick a random mood that has at least one station
+    const viable = moods.filter(m => m.stations.length > 0);
+    if (!viable.length) return;
+    const mood = viable[Math.floor(Math.random() * viable.length)];
+    pool = mood.stations;
+    selectMood(mood.id);
+  }
+  const station = pool[Math.floor(Math.random() * pool.length)];
+  selectStation(station);
+  toast(`✦ ${station.name}`);
+}
+
+/* ============================================================
+   RENDER
+   ============================================================ */
+function renderBands() {
+  bandsEl.innerHTML = '';
+  moods.forEach(m => {
+    const btn = document.createElement('button');
+    btn.className = 'band-btn' + (m.id === activeMoodId ? ' active' : '');
+    btn.textContent = m.label;
+    btn.onclick = () => selectMood(m.id);
+    bandsEl.appendChild(btn);
+  });
+}
+
+function renderPresets() {
+  presetsEl.innerHTML = '';
+  const mood = moods.find(m => m.id === activeMoodId);
+  if (!mood) {
+    moodTaglineEl.textContent = '';
+    return;
+  }
+  moodTaglineEl.textContent = mood.tagline;
+  mood.stations.forEach((s, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'preset' + (s.url === activeStationUrl ? ' active' : '');
+    btn.innerHTML = `
+      <span class="preset-num">${i + 1}</span>
+      <span class="preset-name">${s.name}</span>
+      <span class="preset-genre">${s.genre}</span>
+    `;
+    btn.onclick = () => selectStation(s);
+    presetsEl.appendChild(btn);
+  });
+}
+
+function renderFavorites() {
+  if (favorites.length === 0) {
+    favSection.style.display = 'none';
+    return;
+  }
+  favSection.style.display = '';
+  favStrip.innerHTML = '';
+  favorites.forEach(f => {
+    const chip = document.createElement('button');
+    chip.className = 'fav-chip' + (f.url === activeStationUrl ? ' active' : '');
+    chip.innerHTML = `
+      <span class="fav-dot"></span>
+      <span>${f.name}</span>
+      <button class="fav-del" title="Remove from favorites" aria-label="Remove from favorites">×</button>
+    `;
+    chip.addEventListener('click', (e) => {
+      if (e.target.classList.contains('fav-del')) {
+        e.stopPropagation();
+        removeFavorite(f.url);
+        return;
+      }
+      playFavoritesFetch(f);
+    });
+    favStrip.appendChild(chip);
+  });
+}
+
+function renderRecent() {
+  recentStrip.innerHTML = '';
+  if (recentlyPlayed.length === 0) {
+    recentStrip.innerHTML = '<span style="font-size:11.5px;color:var(--text-muted);opacity:0.7;">Nothing played yet</span>';
+    return;
+  }
+  recentlyPlayed.forEach((r, i) => {
+    const chip = document.createElement('button');
+    chip.className = 'fav-chip' + (r.url === activeStationUrl ? ' active' : '');
+    const ord = i === 0 ? 'now' : `#${i}`;
+    chip.innerHTML = `
+      <span class="fav-dot" style="background:var(--mint);opacity:${i < 3 ? 1 : 0.55};"></span>
+      <span>${r.name}</span>
+      <button class="fav-del" title="Remove from recently played" aria-label="Remove from recently played">×</button>
+    `;
+    chip.addEventListener('click', (e) => {
+      if (e.target.classList.contains('fav-del')) {
+        e.stopPropagation();
+        removeRecent(r.url);
+        return;
+      }
+      playRecent(r);
+    });
+    recentStrip.appendChild(chip);
+  });
+}
+
+/* ============================================================
+   MOOD / STATION SELECTION
+   ============================================================ */
+function selectMood(id) {
+  activeMoodId = id;
+  renderBands();
+  renderPresets();
+}
+
+function selectStation(station, autoplay) {
+  autoplay = autoplay !== false;
+  activeStationUrl = station.url;
+  stationNameEl.textContent = station.name;
+  stationDescEl.textContent = station.genre;
+
+  const a = getAudio();
+  saveLastStation(station);
+  addToRecently(station);
+  renderPresets();
+  renderFavorites();
+  renderRecent();
+
+  if (!autoplay) return;
+
+  isConnecting = true;
+  readoutEl.classList.add('loading');
+  statusLine.textContent = 'Connecting to stream…';
+
+  // Crossfade when the current audible element already has a source AND is
+  // actually playing. In that case we let the crossfade machinery load the new
+  // URL onto the silent element and ramp it in — we do NOT touch the current
+  // element's src at all (doing so would kill the stream mid-ramp).
+  //
+  // First selection, or resume after a pause (current has no src or is paused):
+  // load + play the new station directly on the current element.
+  const doingCrossfade = Boolean(a.src) && !a.paused;
+  if (doingCrossfade) {
+    startCrossfade(station.url, station.name).then(() => {
+      isConnecting = false;
+      readoutEl.classList.remove('loading');
+      isPlaying = true;
+      updatePlayState();
+      statusLine.textContent = 'Streams from SomaFM · free internet radio';
+    }).catch(() => {
+      isConnecting = false;
+      readoutEl.classList.remove('loading');
+      isPlaying = false;
+      updatePlayState();
+      statusLine.textContent = 'Stream unavailable right now — pick another station';
+    });
+  } else {
+    a.src = station.url;
+    a.load();
+    a.play().then(() => {
+      isConnecting = false;
+      readoutEl.classList.remove('loading');
+      isPlaying = true;
+      updatePlayState();
+      statusLine.textContent = 'Streams from SomaFM · free internet radio';
+    }).catch(() => {
+      isConnecting = false;
+      readoutEl.classList.remove('loading');
+      isPlaying = false;
+      updatePlayState();
+      statusLine.textContent = 'Could not start playback — try again';
+    });
+  }
+}
+
+function playFavoritesFetch(f) {
+  // Try to resolve a friendly name from the known moods; fall back to stored name
+  let name = f.name;
+  let genre = 'Custom station';
+  for (const mood of moods) {
+    const match = mood.stations.find(s => s.url === f.url);
+    if (match) { name = match.name; genre = match.genre; break; }
+  }
+  const station = { name, genre, url: f.url };
+  selectStation(station);
+}
+
+function playRecent(r) {
+  // Re-resolve name + genre from moods, or use stored
+  let name = r.name;
+  let genre = 'Previously played';
+  for (const mood of moods) {
+    const match = mood.stations.find(s => s.url === r.url);
+    if (match) { name = match.name; genre = match.genre; break; }
+  }
+  // If it's a custom station that was added to a mood, it'll show up in that mood now
+  const station = { name, genre, url: r.url };
+  if (r.moodId) {
+    selectMood(r.moodId);
+  }
+  selectStation(station);
+}
+
+/* ============================================================
+   FAVORITES
+   ============================================================ */
+function addFavorite(url, name) {
+  if (!url) { toast('No URL given', true); return false; }
+  // Validate it looks like a stream URL
+  try {
+    const u = new URL(url);
+    if (!['http:', 'https:'].includes(u.protocol)) throw new Error('bad protocol');
+  } catch {
+    toast('That URL doesn\'t look right', true);
+    return false;
+  }
+  if (favorites.some(f => f.url === url)) {
+    toast('Already in favorites', true);
+    return false;
+  }
+  const station = resolveStationInfo(url, name);
+  favorites.push({ url, name: station.name });
+  renderFavorites();
+  savePrefs();
+  toast(`★ ${station.name} added to favorites`);
+  return true;
+}
+
+function removeFavorite(url) {
+  favorites = favorites.filter(f => f.url !== url);
+  renderFavorites();
+  savePrefs();
+  toast('Removed from favorites');
+}
+
+function resolveStationInfo(url, fallbackName) {
+  for (const mood of moods) {
+    const match = mood.stations.find(s => s.url === url);
+    if (match) return match;
+  }
+  return {
+    name: fallbackName || url.split('/').pop().replace(/-256-mp3$/, '').replace(/-128-mp3$/, '') || 'Custom station',
+    genre: 'Custom station',
+    url,
+  };
+}
+
+/* ============================================================
+   RECENTLY PLAYED
+   ============================================================ */
+function addToRecently(station) {
+  recentlyPlayed = recentlyPlayed.filter(r => r.url !== station.url);
+  recentlyPlayed.unshift({
+    moodId: activeMoodId,
+    url: station.url,
+    name: station.name,
+  });
+  if (recentlyPlayed.length > MAX_RECENT) recentlyPlayed.length = MAX_RECENT;
+  renderRecent();
+  savePrefs();
+}
+
+function removeRecent(url) {
+  recentlyPlayed = recentlyPlayed.filter(r => r.url !== url);
+  renderRecent();
+  savePrefs();
+}
+
+/* ============================================================
+   CUSTOM STATION FORM
+   ============================================================ */
+function handleAddCustom() {
+  const url = customUrlInput.value.trim();
+  if (!url) { toast('Paste a stream URL first', true); return; }
+  // Try to resolve a name first
+  const info = resolveStationInfo(url);
+  if (!addFavorite(url, info.name)) return;
+  // Clear input
+  customUrlInput.value = '';
+  toast(`★ ${info.name} added`);
+}
+
+function handleAddToMood() {
+  const url = customUrlInput.value.trim();
+  if (!url) { toast('Paste a stream URL first', true); return; }
+  const info = resolveStationInfo(url);
+  // Add to the current mood if there is one
+  if (!activeMoodId) {
+    toast('Pick a mood first', true);
+    return;
+  }
+  const mood = moods.find(m => m.id === activeMoodId);
+  if (!mood) return;
+  if (mood.stations.some(s => s.url === url)) {
+    toast('Already in this mood', true);
+    return;
+  }
+  mood.stations.push({ name: info.name, genre: info.genre, url });
+  // Also favorite it
+  if (!favorites.some(f => f.url === url)) {
+    favorites.push({ url, name: info.name });
+    savePrefs();
+  }
+  // Select it in the current mood
+  selectMood(activeMoodId);
+  selectStation({ name: info.name, genre: info.genre, url });
+  customUrlInput.value = '';
+  toast(`⊕ ${info.name} added to ${mood.label}`);
+}
+
+addCustomBtn.addEventListener('click', handleAddCustom);
+addToMoodBtn.addEventListener('click', handleAddToMood);
+customUrlInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') handleAddCustom();
+});
+const resetPrefsBtn = document.getElementById('resetPrefsBtn');
+resetPrefsBtn.addEventListener('click', () => {
+  clearPrefs();
+  toast('Reset preferences');
+});
+
+/* ============================================================
+   PLAYBACK
+   ============================================================ */
+function saveLastStation(station) {
+  if (!activeMoodId) return;
+  lastStation = { moodId: activeMoodId, url: station.url, name: station.name };
+}
+
+function showConnecting() {
+  isConnecting = true;
+  readoutEl.classList.add('loading');
+}
+function hideConnecting() {
+  isConnecting = false;
+  readoutEl.classList.remove('loading');
+}
+
+
+function retryStream() {
+  if (retryTimer) return;
+  retryTimer = setTimeout(() => {
+    retryTimer = null;
+    if (!activeStationUrl) return;
+    if (cf) abortCrossfadeKeepResolved();
+    const a = getAudio();
+    a.src = activeStationUrl;
+    a.load();
+    showConnecting();
+    a.play().then(() => {
+      hideConnecting();
+      isPlaying = true;
+      updatePlayState();
+      statusLine.textContent = 'Streams from SomaFM · free internet radio';
+    }).catch(() => {
+      hideConnecting();
+      isPlaying = false;
+      updatePlayState();
+      statusLine.textContent = 'Stream unavailable right now — pick another station';
+    });
+  }, 2000);
+}
+
+function updatePlayState() {
+  radioEl.classList.toggle('playing', isPlaying);
+  playBtn.textContent = isPlaying ? '❚❚' : '▶';
+  playBtn.setAttribute('aria-label', isPlaying ? 'Pause' : 'Play');
+}
+
+playBtn.addEventListener('click', () => {
+  if (!activeStationUrl) return;
+  if (isPlaying) {
+    player.pause();
+    isPlaying = false;
+  } else {
+    if (!player.src) return;
+    showConnecting();
+    statusLine.textContent = 'Connecting to stream…';
+    player.play().then(() => {
+      hideConnecting();
+      isPlaying = true;
+      updatePlayState();
+      statusLine.textContent = 'Streams from SomaFM · free internet radio';
+    }).catch(() => {
+      hideConnecting();
+      isPlaying = false;
+      updatePlayState();
+      statusLine.textContent = 'Could not start playback — try again';
+    });
+  }
+  updatePlayState();
+});
+
+surpriseBtn.addEventListener('click', surpriseMe);
+
+// Surprise me via keyboard: "S" when not focused in an input
+document.addEventListener('keydown', (e) => {
+  if (e.code === 'KeyS' && e.target.tagName !== 'INPUT') {
+    e.preventDefault();
+    surpriseMe();
+    return;
+  }
+});
+
+/* (playing/waiting/error are pinned in INIT via pinListenersOn; not duplicated here) */
+
+volumeEl.addEventListener('input', () => {
+  masterVolume = volumeEl.value / 100;
+  if (!cf) setPlayerVolume(getAudio(), masterVolume);
+});
+setPlayerVolume(player, MASTER_TARGET);
+
+/* ============================================================
+   KEYBOARD
+   ============================================================ */
+document.addEventListener('keydown', (e) => {
+  if (e.code === 'Space') {
+    e.preventDefault();
+    if (activeStationUrl) playBtn.click();
+    return;
+  }
+  if (e.target.tagName === 'INPUT') return;
+  const mood = moods.find(m => m.id === activeMoodId);
+  if (!mood) return;
+  if (e.code === 'ArrowRight') {
+    e.preventDefault();
+    if (!activeStationUrl) return;
+    const idx = mood.stations.findIndex(s => s.url === activeStationUrl);
+    selectStation(mood.stations[(idx + 1) % mood.stations.length]);
+  } else if (e.code === 'ArrowLeft') {
+    e.preventDefault();
+    if (!activeStationUrl) return;
+    const idx = mood.stations.findIndex(s => s.url === activeStationUrl);
+    selectStation(mood.stations[(idx - 1 + mood.stations.length) % mood.stations.length]);
+  } else if (e.code === 'ArrowDown') {
+    e.preventDefault();
+    const mIdx = moods.findIndex(m => m.id === activeMoodId);
+    selectMood(moods[(mIdx + 1) % moods.length].id);
+  } else if (e.code === 'ArrowUp') {
+    e.preventDefault();
+    const mIdx = moods.findIndex(m => m.id === activeMoodId);
+    selectMood(moods[(mIdx - 1 + moods.length) % moods.length].id);
+  }
+});
+
+/* ============================================================
+   INIT
+   ============================================================ */
+// getAudio() returns the currently-audible element. During a crossfade the DOM
+// ids are swapped so #player stays with the audible element and `player` is
+// kept in sync with it.
+function getAudio() { return player; }
+
+// Attach the audience-facing listeners that the rest of the code expects onto
+// the primary element. The silent element (#crossfadePlayer) only needs the
+// volume sync so its volume is settable without re-rendering.
+function pinListenersOn(el) {
+  el.addEventListener('playing', onPlaying);
+  el.addEventListener('waiting', onWaiting);
+  el.addEventListener('error', onPlayerError);
+  el.addEventListener('volumechange', syncSliderFromPrimary);
+}
+function unpinListenersOn(el) {
+  el.removeEventListener('playing', onPlaying);
+  el.removeEventListener('waiting', onWaiting);
+  el.removeEventListener('error', onPlayerError);
+  el.removeEventListener('volumechange', syncSliderFromPrimary);
+}
+// Keep these as named functions so pin/unpin can reference the same refs.
+function onPlaying() {
+  statusLine.textContent = 'Streams from SomaFM · free internet radio';
+}
+function onWaiting() {
+  statusLine.textContent = 'Buffering…';
+}
+function onPlayerError() {
+  // Hand off to the retry machinery (which also uses getAudio()).
+  retryStream();
+}
+
+pinListenersOn(player);
+setPlayerVolume(player, MASTER_TARGET);
+player.preload = 'none';
+document.getElementById('crossfadePlayer').preload = 'auto';
+
+loadPrefs();
+restoreLastStation();
+seedFavorites();
+selectMood(defaultMoodForTime());
+</script>
+
+</body>
+</html>
