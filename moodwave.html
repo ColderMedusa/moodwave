@@ -305,6 +305,20 @@
     font-size: 10.5px;
     color: var(--text-muted);
   }
+  .preset-avail {
+    display: block;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    margin: 5px auto 0;
+  }
+  .preset-avail.avail {
+    background: var(--amber);
+  }
+  .preset-avail.unavail {
+    background: var(--rose);
+    opacity: 0.85;
+  }
 
   /* Custom station form */
   .custom-station-bar {
@@ -629,6 +643,37 @@ let favorites = [];            // { url, name }[]
 const MAX_RECENT = 5;
 let recentlyPlayed = [];       // [{ moodId, url, name }] — most recent first
 
+// Phase 6 — station availability indicators (probe on mood switch + reinforcement from real plays)
+// Session-only cache: cleared on reload. Dot is advisory only — you can still click an "unavailable" station.
+// Probe uses a short HEAD (~2.5s timeout) against the stream URL. 200/204/405 → available; anything else → unavailable.
+// SomaFM ice streams return CORS * and meaningful status codes on HEAD (dev-log lesson: Radio X returns 405 on HEAD,
+// which is treated as "reachable" here; SomaFM ice endpoints respond properly to HEAD).
+const stationAvailability = Object.create(null);  // url -> 'avail' | 'unavail' | undefined
+let probeTimer = null;
+const PROBE_TIMEOUT_MS = 2500;
+
+function probeMoodStations(moodId) {
+  if (probeTimer) { clearTimeout(probeTimer); probeTimer = null; }
+  const mood = moods.find(m => m.id === moodId);
+  if (!mood) return;
+  probeTimer = setTimeout(() => {
+    probeTimer = null;
+    mood.stations.forEach(s => probeStation(s.url));
+  }, 60);
+}
+function probeStation(url) {
+  if (stationAvailability[url] !== undefined) return;
+  fetch(url, { method: 'HEAD', mode: 'cors', signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) })
+    .then(r => {
+      if (r.status === 200 || r.status === 204 || r.status === 405) stationAvailability[url] = 'avail';
+      else stationAvailability[url] = 'unavail';
+    })
+    .catch(() => { stationAvailability[url] = 'unavail'; })
+    .finally(() => { renderPresets(); });
+}
+function markAvailable(url) { if (stationAvailability[url] !== 'avail') { stationAvailability[url] = 'avail'; renderPresets(); } }
+function markUnavailable(url) { if (stationAvailability[url] !== 'unavail') { stationAvailability[url] = 'unavail'; renderPresets(); } }
+
 // ---- persistence (localStorage) ----
 const PREFS_KEY = "moodwave_prefs_v1";
 const STORAGE_ENABLED = (() => {
@@ -945,10 +990,12 @@ function renderPresets() {
   mood.stations.forEach((s, i) => {
     const btn = document.createElement('button');
     btn.className = 'preset' + (s.url === activeStationUrl ? ' active' : '');
+    const avail = stationAvailability[s.url];
     btn.innerHTML = `
       <span class="preset-num">${i + 1}</span>
       <span class="preset-name">${s.name}</span>
       <span class="preset-genre">${s.genre}</span>
+      <span class="preset-avail${avail ? ' ' + avail : ''}"></span>
     `;
     btn.onclick = () => selectStation(s);
     presetsEl.appendChild(btn);
@@ -1016,6 +1063,7 @@ function selectMood(id) {
   activeMoodId = id;
   renderBands();
   renderPresets();
+  probeMoodStations(id);
 }
 
 function selectStation(station, autoplay) {
@@ -1052,12 +1100,14 @@ function selectStation(station, autoplay) {
       isPlaying = true;
       updatePlayState();
       statusLine.textContent = 'Streams from SomaFM · free internet radio';
+      markAvailable(station.url);
     }).catch(() => {
       isConnecting = false;
       readoutEl.classList.remove('loading');
       isPlaying = false;
       updatePlayState();
       statusLine.textContent = 'Stream unavailable right now — pick another station';
+      markUnavailable(station.url);
     });
   } else {
     a.src = station.url;
@@ -1068,12 +1118,14 @@ function selectStation(station, autoplay) {
       isPlaying = true;
       updatePlayState();
       statusLine.textContent = 'Streams from SomaFM · free internet radio';
+      markAvailable(station.url);
     }).catch(() => {
       isConnecting = false;
       readoutEl.classList.remove('loading');
       isPlaying = false;
       updatePlayState();
       statusLine.textContent = 'Could not start playback — try again';
+      markUnavailable(station.url);
     });
   }
 }
