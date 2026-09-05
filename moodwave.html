@@ -441,6 +441,14 @@
     letter-spacing: 0.05em;
     white-space: nowrap;
   }
+  .volume-pct {
+    font-size: 10.5px;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+    min-width: 2.4em;
+    text-align: right;
+    letter-spacing: 0.04em;
+  }
   input[type="range"] {
     -webkit-appearance: none;
     appearance: none;
@@ -449,6 +457,9 @@
     background: var(--line);
     border-radius: 2px;
     outline: none;
+    background-size: 0% 100%;
+    background-repeat: no-repeat;
+    background-image: linear-gradient(90deg, var(--amber) 0%, var(--amber) 100%);
   }
   input[type="range"]::-webkit-slider-thumb {
     -webkit-appearance: none;
@@ -542,6 +553,7 @@
     <div class="volume-wrap">
       <span class="volume-label">VOL</span>
       <input type="range" id="volume" min="0" max="100" value="70">
+      <span class="volume-pct" id="volumePct">70%</span>
     </div>
   </div>
 
@@ -677,6 +689,7 @@ const stationDescEl = document.getElementById('stationDesc');
 const playBtn = document.getElementById('playBtn');
 const surpriseBtn = document.getElementById('surpriseBtn');
 const volumeEl = document.getElementById('volume');
+const volumePctEl = document.getElementById('volumePct');
 const statusLine = document.getElementById('statusLine');
 const favSection = document.getElementById('favoritesSection');
 const favStrip = document.getElementById('favoritesStrip');
@@ -1298,8 +1311,12 @@ document.addEventListener('keydown', (e) => {
 
 volumeEl.addEventListener('input', () => {
   masterVolume = volumeEl.value / 100;
+  volumePctEl.textContent = Math.round(masterVolume * 100) + '%';
+  volumeEl.style.backgroundSize = masterVolume * 100 + '% 100%';
   if (!cf) setPlayerVolume(getAudio(), masterVolume);
 });
+volumePctEl.textContent = Math.round(MASTER_TARGET * 100) + '%';
+volumeEl.style.backgroundSize = MASTER_TARGET * 100 + '% 100%';
 setPlayerVolume(player, MASTER_TARGET);
 
 /* ============================================================
